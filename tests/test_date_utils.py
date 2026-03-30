@@ -69,19 +69,46 @@ class TestValidateDates:
     def test_valid_range(self, mock_date):
         mock_date.today.return_value = date(2026, 3, 30)
         mock_date.side_effect = lambda *args, **kwargs: date(*args, **kwargs)
-        _, dates = validate_dates("01/03/2026", "05/03/2026")
-        assert len(dates) == 5
+        _, result = validate_dates("01/03/2026", "05/03/2026")
+        assert len(result.dates) == 5
+        assert result.truncated is False
+        assert result.truncated_to is None
 
     @patch("core.date_utils.date")
-    def test_future_start_date(self, mock_date):
+    def test_both_dates_future_rejected(self, mock_date):
         mock_date.today.return_value = date(2026, 3, 15)
         mock_date.side_effect = lambda *args, **kwargs: date(*args, **kwargs)
-        with pytest.raises(ValueError, match="futura"):
-            validate_dates("20/03/2026", "25/03/2026")
+        with pytest.raises(ValueError, match="apenas datas futuras"):
+            validate_dates("01/05/2026", "31/05/2026")
 
     @patch("core.date_utils.date")
-    def test_future_end_date(self, mock_date):
+    def test_future_end_date_truncated(self, mock_date):
+        mock_date.today.return_value = date(2026, 3, 30)
+        mock_date.side_effect = lambda *args, **kwargs: date(*args, **kwargs)
+        _, result = validate_dates("01/03/2026", "15/04/2026")
+        assert result.truncated is True
+        assert result.truncated_to == date(2026, 3, 30)
+        assert result.dates[-1] == date(2026, 3, 30)
+        assert len(result.dates) == 30  # March 1-30
+
+    @patch("core.date_utils.date")
+    def test_end_date_equals_today_not_truncated(self, mock_date):
+        mock_date.today.return_value = date(2026, 3, 30)
+        mock_date.side_effect = lambda *args, **kwargs: date(*args, **kwargs)
+        _, result = validate_dates("01/03/2026", "30/03/2026")
+        assert result.truncated is False
+
+    @patch("core.date_utils.date")
+    def test_start_after_end_rejected(self, mock_date):
+        mock_date.today.return_value = date(2026, 3, 30)
+        mock_date.side_effect = lambda *args, **kwargs: date(*args, **kwargs)
+        with pytest.raises(ValueError, match="posterior"):
+            validate_dates("15/03/2026", "01/03/2026")
+
+    @patch("core.date_utils.date")
+    def test_single_future_start_and_end(self, mock_date):
+        """Both start and end in the future (same day)."""
         mock_date.today.return_value = date(2026, 3, 15)
         mock_date.side_effect = lambda *args, **kwargs: date(*args, **kwargs)
-        with pytest.raises(ValueError, match="futura"):
-            validate_dates("01/03/2026", "20/03/2026")
+        with pytest.raises(ValueError, match="apenas datas futuras"):
+            validate_dates("20/03/2026", "20/03/2026")

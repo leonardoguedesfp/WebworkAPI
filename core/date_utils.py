@@ -33,22 +33,52 @@ def generate_date_range(start: date, end: date) -> list[date]:
     return dates
 
 
-def validate_dates(start_str: str, end_str: str) -> tuple[date, list[date]]:
+class DateValidationResult:
+    """Result of date validation, including truncation info."""
+
+    def __init__(self, dates: list[date], truncated: bool = False,
+                 truncated_to: date | None = None):
+        self.dates = dates
+        self.truncated = truncated
+        self.truncated_to = truncated_to
+
+
+def validate_dates(start_str: str, end_str: str) -> tuple[date, DateValidationResult]:
     """Parse, validate, and generate the date range.
 
+    If the end date is in the future, it is silently truncated to today.
+    If both dates are in the future, raises ValueError.
+
     Returns:
-        Tuple of (start_date, list_of_dates).
+        Tuple of (start_date, DateValidationResult).
 
     Raises:
-        ValueError: On any validation failure.
+        ValueError: If start > end, or both dates are future.
     """
     start = parse_date_br(start_str)
     end = parse_date_br(end_str)
 
-    today = date.today()
-    if start > today:
-        raise ValueError("A data de início não pode ser futura.")
-    if end > today:
-        raise ValueError("A data de fim não pode ser futura.")
+    if start > end:
+        raise ValueError("A data de início não pode ser posterior à data de fim.")
 
-    return start, generate_date_range(start, end)
+    today = date.today()
+
+    # Both dates in the future
+    if start > today and end > today:
+        raise ValueError(
+            "O intervalo selecionado contém apenas datas futuras. "
+            "Selecione um período válido."
+        )
+
+    # Truncate end date to today if it's in the future
+    truncated = False
+    if end > today:
+        end = today
+        truncated = True
+
+    dates = generate_date_range(start, end)
+    return start, DateValidationResult(
+        dates=dates,
+        truncated=truncated,
+        truncated_to=today if truncated else None,
+    )

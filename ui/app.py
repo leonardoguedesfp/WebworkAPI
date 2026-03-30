@@ -22,8 +22,6 @@ from ui.styles import (
     BG_MAIN,
     BLUE_PRIMARY,
     BODY_TEXT_COLOR,
-    BTN_CANCEL_BG,
-    BTN_CANCEL_FG,
     BTN_HOVER,
     BTN_PRIMARY_BG,
     BTN_PRIMARY_FG,
@@ -68,8 +66,9 @@ class WebWorkApp(ctk.CTk):
         header.pack(fill="x")
 
         # Main scrollable area
-        main = ctk.CTkScrollableFrame(self, fg_color=BG_MAIN)
-        main.pack(fill="both", expand=True, padx=16, pady=(8, 8))
+        self._main = ctk.CTkScrollableFrame(self, fg_color=BG_MAIN)
+        self._main.pack(fill="both", expand=True, padx=16, pady=(8, 8))
+        main = self._main
 
         # --- URL Section ---
         SectionLabel(main, text="URL da Requisição").pack(
@@ -88,11 +87,11 @@ class WebWorkApp(ctk.CTk):
         # --- Colaboradores Section ---
         SectionLabel(main, text="Colaboradores").pack(anchor="w", pady=(4, 2))
 
-        btn_frame = ctk.CTkFrame(main, fg_color="transparent")
-        btn_frame.pack(fill="x", pady=(0, 4))
+        self._btn_frame = ctk.CTkFrame(main, fg_color="transparent")
+        self._btn_frame.pack(fill="x", pady=(0, 4))
 
-        ctk.CTkButton(
-            btn_frame,
+        self._select_all_btn = ctk.CTkButton(
+            self._btn_frame,
             text="Selecionar todos",
             font=FONT_BODY,
             fg_color=BTN_SECONDARY_BG,
@@ -100,10 +99,11 @@ class WebWorkApp(ctk.CTk):
             text_color=BTN_SECONDARY_FG,
             width=140,
             command=self._select_all,
-        ).pack(side="left", padx=(0, 8))
+        )
+        self._select_all_btn.pack(side="left", padx=(0, 8))
 
-        ctk.CTkButton(
-            btn_frame,
+        self._deselect_all_btn = ctk.CTkButton(
+            self._btn_frame,
             text="Desmarcar todos",
             font=FONT_BODY,
             fg_color=BTN_SECONDARY_BG,
@@ -111,7 +111,8 @@ class WebWorkApp(ctk.CTk):
             text_color=BTN_SECONDARY_FG,
             width=140,
             command=self._deselect_all,
-        ).pack(side="left")
+        )
+        self._deselect_all_btn.pack(side="left")
 
         self.colab_list = ColaboradorCheckboxList(main, COLABORADORES)
         self.colab_list.pack(fill="x", pady=(0, 8))
@@ -159,7 +160,7 @@ class WebWorkApp(ctk.CTk):
             base = Path.cwd()
         self._dest_folder = str(base / "WebWork_Downloads")
 
-        ctk.CTkButton(
+        self._choose_folder_btn = ctk.CTkButton(
             folder_frame,
             text="Escolher pasta",
             font=FONT_BODY,
@@ -168,7 +169,8 @@ class WebWorkApp(ctk.CTk):
             text_color=BTN_SECONDARY_FG,
             width=130,
             command=self._choose_folder,
-        ).pack(side="left", padx=(0, 8))
+        )
+        self._choose_folder_btn.pack(side="left", padx=(0, 8))
 
         self.folder_label = ctk.CTkLabel(
             folder_frame,
@@ -179,7 +181,7 @@ class WebWorkApp(ctk.CTk):
         )
         self.folder_label.pack(side="left", fill="x", expand=True)
 
-        # --- Action Buttons ---
+        # --- Action Button (Baixar / Cancelar — single button) ---
         action_frame = ctk.CTkFrame(main, fg_color="transparent")
         action_frame.pack(fill="x", pady=(8, 4))
 
@@ -192,36 +194,9 @@ class WebWorkApp(ctk.CTk):
             text_color=BTN_PRIMARY_FG,
             width=160,
             height=40,
-            command=self._start_download,
+            command=self._on_main_button_click,
         )
         self.download_btn.pack(side="left", padx=(0, 8))
-
-        self.cancel_btn = ctk.CTkButton(
-            action_frame,
-            text="Cancelar",
-            font=FONT_BODY,
-            fg_color=BTN_CANCEL_BG,
-            hover_color="#aa0000",
-            text_color=BTN_CANCEL_FG,
-            width=100,
-            height=40,
-            command=self._cancel_download,
-            state="disabled",
-        )
-        self.cancel_btn.pack(side="left", padx=(0, 8))
-
-        self.open_folder_btn = ctk.CTkButton(
-            action_frame,
-            text="Abrir pasta",
-            font=FONT_BODY,
-            fg_color=BTN_SECONDARY_BG,
-            hover_color=BTN_HOVER,
-            text_color=BTN_SECONDARY_FG,
-            width=110,
-            height=40,
-            command=self._open_folder,
-        )
-        self.open_folder_btn.pack(side="left")
 
         # --- Progress ---
         self.progress_label = ctk.CTkLabel(
@@ -251,6 +226,20 @@ class WebWorkApp(ctk.CTk):
         )
         self.status_label.pack(fill="x", pady=(0, 4))
 
+        # --- "Abrir pasta" button (hidden by default) ---
+        self.open_folder_btn = ctk.CTkButton(
+            main,
+            text="Abrir pasta",
+            font=FONT_BODY,
+            fg_color=BTN_SECONDARY_BG,
+            hover_color=BTN_HOVER,
+            text_color=BTN_SECONDARY_FG,
+            width=130,
+            height=36,
+            command=self._open_folder,
+        )
+        # Not packed yet — only shown after download completes
+
         # --- Message / Error area ---
         self.message_label = ctk.CTkLabel(
             main,
@@ -261,6 +250,17 @@ class WebWorkApp(ctk.CTk):
             wraplength=660,
         )
         self.message_label.pack(fill="x", pady=(0, 2))
+
+        # --- Warning label for truncated dates ---
+        self.warning_label = ctk.CTkLabel(
+            main,
+            text="",
+            font=FONT_BODY,
+            text_color=WARNING_COLOR,
+            anchor="w",
+            wraplength=660,
+        )
+        self.warning_label.pack(fill="x", pady=(0, 2))
 
         # --- Error log text box (hidden by default) ---
         self.error_log_frame = ctk.CTkFrame(main, fg_color="transparent")
@@ -309,20 +309,47 @@ class WebWorkApp(ctk.CTk):
     def _set_message(self, text, color=ERROR_COLOR):
         self.message_label.configure(text=text, text_color=color)
 
+    def _set_warning(self, text):
+        self.warning_label.configure(text=text)
+
     def _set_downloading(self, active: bool):
         self._downloading = active
         state = "disabled" if active else "normal"
-        self.download_btn.configure(state=state)
+
+        # Toggle main button appearance
+        if active:
+            self.download_btn.configure(
+                text="Cancelar",
+                fg_color=NEUTRAL,
+                hover_color="#706c69",
+            )
+        else:
+            self.download_btn.configure(
+                text="Baixar",
+                fg_color=BTN_PRIMARY_BG,
+                hover_color=BTN_HOVER,
+            )
+
+        # Disable/enable input fields
         self.url_entry.configure(state=state)
         self.date_start.configure(state=state)
         self.date_end.configure(state=state)
-        self.cancel_btn.configure(
-            state="normal" if active else "disabled"
-        )
+        self._select_all_btn.configure(state=state)
+        self._deselect_all_btn.configure(state=state)
+        self._choose_folder_btn.configure(state=state)
+        self.colab_list.set_enabled(not active)
+
+    def _on_main_button_click(self):
+        if self._downloading:
+            self._cancel_download()
+        else:
+            self._start_download()
 
     def _start_download(self):
         self._set_message("")
+        self._set_warning("")
         self.error_log_frame.pack_forget()
+        self.open_folder_btn.pack_forget()
 
         # Validate URL
         url = self.url_entry.get().strip()
@@ -345,12 +372,21 @@ class WebWorkApp(ctk.CTk):
 
         # Validate dates
         try:
-            _, dates = validate_dates(
+            _, date_result = validate_dates(
                 self.date_start.get(), self.date_end.get()
             )
         except ValueError as e:
             self._set_message(str(e))
             return
+
+        dates = date_result.dates
+
+        # Show truncation warning if applicable
+        if date_result.truncated and date_result.truncated_to:
+            self._set_warning(
+                "Datas futuras ignoradas. Downloads realizados até "
+                f"{date_result.truncated_to.strftime('%d/%m/%Y')}."
+            )
 
         dest = self._dest_folder
         os.makedirs(dest, exist_ok=True)
@@ -423,3 +459,7 @@ class WebWorkApp(ctk.CTk):
 
         if not result.errors and not result.cancelled:
             self.progress_label.configure(text="Concluído com sucesso!")
+
+        # Show "Abrir pasta" button if at least 1 file was downloaded
+        if result.success > 0:
+            self.open_folder_btn.pack(anchor="w", pady=(4, 4))

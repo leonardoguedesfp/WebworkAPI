@@ -72,6 +72,7 @@ class ColaboradorCheckboxList(ctk.CTkScrollableFrame):
         )
         self.vars: list[tuple[dict, ctk.BooleanVar]] = []
 
+        self._checkboxes: list[ctk.CTkCheckBox] = []
         for colab in colaboradores:
             var = ctk.BooleanVar(value=False)
             cb = ctk.CTkCheckBox(
@@ -86,6 +87,7 @@ class ColaboradorCheckboxList(ctk.CTkScrollableFrame):
             )
             cb.pack(anchor="w", padx=8, pady=2)
             self.vars.append((colab, var))
+            self._checkboxes.append(cb)
 
     def get_selected(self) -> list[dict]:
         return [colab for colab, var in self.vars if var.get()]
@@ -97,6 +99,11 @@ class ColaboradorCheckboxList(ctk.CTkScrollableFrame):
     def deselect_all(self):
         for _, var in self.vars:
             var.set(False)
+
+    def set_enabled(self, enabled: bool):
+        state = "normal" if enabled else "disabled"
+        for cb in self._checkboxes:
+            cb.configure(state=state)
 
 
 class DateEntry(ctk.CTkEntry):
