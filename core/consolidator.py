@@ -11,12 +11,12 @@ from pathlib import Path
 from openpyxl import load_workbook, Workbook
 
 
-# Regex to extract YYYY-MM-DD from filenames like "Name_2026-03-01.xlsx"
-_DATE_RE = re.compile(r"_(\d{4}-\d{2}-\d{2})\.xlsx$")
+# Flexible regex: find YYYY-MM-DD anywhere in the filename (not just before .xlsx)
+_DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 
 
 def _extract_date_from_filename(filename: str) -> date | None:
-    """Try to extract a date from a filename matching ``*_YYYY-MM-DD.xlsx``."""
+    """Try to extract a date from a filename containing ``YYYY-MM-DD``."""
     m = _DATE_RE.search(filename)
     if m:
         try:
@@ -115,13 +115,13 @@ def consolidate_files(
     if not wb.sheetnames:
         return None
 
-    # Build output filename
+    # Build output filename using real dates — never use placeholder strings
     if extracted_dates:
-        start_str = extracted_dates[0].strftime("%Y-%m-%d")
-        end_str = extracted_dates[-1].strftime("%Y-%m-%d")
+        start_str = min(extracted_dates).strftime("%Y-%m-%d")
+        end_str = max(extracted_dates).strftime("%Y-%m-%d")
     else:
-        start_str = "inicio"
-        end_str = "fim"
+        start_str = "sem-data"
+        end_str = "sem-data"
 
     out_name = f"consolidado_{colab_name}_{start_str}_{end_str}.xlsx"
     out_path = output_dir / out_name

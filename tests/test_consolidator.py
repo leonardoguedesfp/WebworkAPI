@@ -41,8 +41,13 @@ class TestExtractDateFromFilename:
         assert _extract_date_from_filename("Name_2026-13-40.xlsx") is None
 
     def test_date_only(self):
-        # No underscore prefix → should NOT match
-        assert _extract_date_from_filename("2026-03-01.xlsx") is None
+        # Date-only filename — flexible regex should still find the date
+        assert _extract_date_from_filename("2026-03-01.xlsx") == date(2026, 3, 1)
+
+    def test_duplicated_name_pattern(self):
+        # Defensive: even if name is duplicated around the date, extract the date
+        assert _extract_date_from_filename("CíntiaOliveiraPessôa_2026-03-01_CíntiaOliveiraPessôa.xlsx") == date(2026, 3, 1)
+        assert _extract_date_from_filename("Ana Maria Areia Alves_2026-03-15_Ana Maria Areia Alves.xlsx") == date(2026, 3, 15)
 
 
 class TestSheetNameForDate:
