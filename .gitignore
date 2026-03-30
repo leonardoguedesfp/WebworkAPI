@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+WebWork_Downloads/
+log_erros.txt
