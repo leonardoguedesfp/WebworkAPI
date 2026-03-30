@@ -58,7 +58,7 @@ class WebWorkApp(ctk.CTk):
 
         ctk.set_appearance_mode("light")
 
-        self.title("WebWork Downloader — Ricardo Passos Advocacia")
+        self.title("WebWork Downloader v5 — Ricardo Passos Advocacia")
         self.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.minsize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
         self.configure(fg_color=BG_MAIN)
