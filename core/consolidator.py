@@ -15,6 +15,23 @@ from openpyxl import load_workbook, Workbook
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 
 
+def extract_colab_name_from_filename(filename: str) -> str | None:
+    """Try to extract the collaborator name from a filename.
+
+    Expected pattern: ``<name>_YYYY-MM-DD.xlsx`` (possibly with duplicated
+    name suffix like ``<name>_YYYY-MM-DD_<name>.xlsx``).
+
+    Returns the extracted name (with underscores replaced by spaces) or
+    ``None`` if the pattern doesn't match.
+    """
+    m = re.match(r"^(.+?)_(\d{4}-\d{2}-\d{2})", filename)
+    if m:
+        raw_name = m.group(1).strip()
+        if raw_name:
+            return raw_name
+    return None
+
+
 def _extract_date_from_filename(filename: str) -> date | None:
     """Try to extract a date from a filename containing ``YYYY-MM-DD``."""
     m = _DATE_RE.search(filename)

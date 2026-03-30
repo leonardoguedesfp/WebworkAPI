@@ -8,7 +8,11 @@ from tkinter import filedialog
 
 import customtkinter as ctk
 
-from core.consolidator import consolidate_after_download, consolidate_files
+from core.consolidator import (
+    consolidate_after_download,
+    consolidate_files,
+    extract_colab_name_from_filename,
+)
 from core.date_utils import validate_dates
 from core.downloader import DownloadResult, run_downloads, save_error_log
 from core.token_parser import extract_token
@@ -398,6 +402,17 @@ class WebWorkApp(ctk.CTk):
         )
         self._cons_empty_label.pack(pady=8)
 
+        # Warning label for mixed collaborators
+        self._cons_warn_label = ctk.CTkLabel(
+            main,
+            text="",
+            font=FONT_SMALL,
+            text_color=WARNING_COLOR,
+            anchor="w",
+            wraplength=660,
+        )
+        self._cons_warn_label.pack(fill="x", pady=(0, 2))
+
         # Collaborator selection
         SectionLabel(main, text="Colaborador").pack(anchor="w", pady=(4, 2))
 
@@ -706,6 +721,7 @@ class WebWorkApp(ctk.CTk):
                 self._cons_files.append(fp)
 
         self._cons_refresh_file_list()
+        self._cons_auto_detect_colab()
 
     def _cons_refresh_file_list(self):
         # Destroy all children
@@ -751,6 +767,61 @@ class WebWorkApp(ctk.CTk):
         if 0 <= index < len(self._cons_files):
             self._cons_files.pop(index)
             self._cons_refresh_file_list()
+            self._cons_auto_detect_colab()
+
+    def _cons_auto_detect_colab(self):
+        """Auto-detect collaborator from selected filenames and fill dropdown."""
+        self._cons_warn_label.configure(text="")
+
+        if not self._cons_files:
+            return
+
+        # Build lookup: normalize name (replace spaces with nothing, lowercase)
+        colab_names = [c["nome"] for c in COLABORADORES]
+        norm_map: dict[str, str] = {}
+        for name in colab_names:
+            # Key: lowercase with spaces and underscores removed
+            key = name.lower().replace(" ", "").replace("_", "")
+            norm_map[key] = name
+
+        # Extract collaborator names from all files
+        detected: set[str] = set()
+        detected_raw: set[str] = set()
+        for fp in self._cons_files:
+            raw = extract_colab_name_from_filename(fp.name)
+            if raw:
+                detected_raw.add(raw)
+                # Try to match against known collaborators
+                norm_key = raw.lower().replace(" ", "").replace("_", "")
+                if norm_key in norm_map:
+                    detected.add(norm_map[norm_key])
+
+        if len(detected) == 1:
+            # All files match a single known collaborator
+            match = detected.pop()
+            self._cons_colab_dropdown.set(match)
+        elif len(detected) > 1:
+            # Files from different collaborators
+            names = ", ".join(sorted(detected))
+            self._cons_warn_label.configure(
+                text=f"Atenção: arquivos de colaboradores diferentes detectados ({names}). "
+                "Selecione manualmente o colaborador desejado."
+            )
+            self._cons_colab_dropdown.set("")
+        elif len(detected_raw) == 1:
+            # Single name detected but not in the registered list — try partial match
+            raw = detected_raw.pop()
+            norm_key = raw.lower().replace(" ", "").replace("_", "")
+            # Check partial containment
+            for key, name in norm_map.items():
+                if norm_key in key or key in norm_key:
+                    self._cons_colab_dropdown.set(name)
+                    return
+            # No match found — leave empty
+            self._cons_warn_label.configure(
+                text=f"Colaborador detectado nos arquivos ({raw}) não encontrado na lista. "
+                "Selecione manualmente."
+            )
 
     def _cons_run(self):
         self._cons_status_label.configure(text="", text_color=BODY_TEXT_COLOR)

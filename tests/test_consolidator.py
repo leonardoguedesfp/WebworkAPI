@@ -10,6 +10,7 @@ from core.consolidator import (
     _sheet_name_for_date,
     consolidate_after_download,
     consolidate_files,
+    extract_colab_name_from_filename,
 )
 
 
@@ -48,6 +49,23 @@ class TestExtractDateFromFilename:
         # Defensive: even if name is duplicated around the date, extract the date
         assert _extract_date_from_filename("CíntiaOliveiraPessôa_2026-03-01_CíntiaOliveiraPessôa.xlsx") == date(2026, 3, 1)
         assert _extract_date_from_filename("Ana Maria Areia Alves_2026-03-15_Ana Maria Areia Alves.xlsx") == date(2026, 3, 15)
+
+
+class TestExtractColabName:
+    def test_standard_pattern(self):
+        assert extract_colab_name_from_filename("Maria Isabel_2026-03-01.xlsx") == "Maria Isabel"
+
+    def test_no_spaces(self):
+        assert extract_colab_name_from_filename("CíntiaOliveiraPessôa_2026-12-25.xlsx") == "CíntiaOliveiraPessôa"
+
+    def test_duplicated_name(self):
+        assert extract_colab_name_from_filename("Ana Maria_2026-03-15_Ana Maria.xlsx") == "Ana Maria"
+
+    def test_no_date(self):
+        assert extract_colab_name_from_filename("random_report.xlsx") is None
+
+    def test_date_only(self):
+        assert extract_colab_name_from_filename("2026-03-01.xlsx") is None
 
 
 class TestSheetNameForDate:
