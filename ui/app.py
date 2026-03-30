@@ -79,8 +79,9 @@ class WebWorkApp(ctk.CTk):
         header.pack(fill="x")
 
         # --- Tab bar ---
-        self._tab_bar = ctk.CTkFrame(self, fg_color=BG_MAIN, corner_radius=0)
+        self._tab_bar = ctk.CTkFrame(self, fg_color=BG_MAIN, corner_radius=0, height=44)
         self._tab_bar.pack(fill="x", padx=16, pady=(8, 0))
+        self._tab_bar.pack_propagate(False)
 
         self._tab_download_btn = ctk.CTkButton(
             self._tab_bar,
@@ -94,7 +95,7 @@ class WebWorkApp(ctk.CTk):
             height=36,
             command=lambda: self._switch_tab("download"),
         )
-        self._tab_download_btn.pack(side="left", padx=(0, 4))
+        self._tab_download_btn.pack(side="left", padx=(0, 4), pady=4)
 
         self._tab_consolidate_btn = ctk.CTkButton(
             self._tab_bar,
@@ -108,14 +109,20 @@ class WebWorkApp(ctk.CTk):
             height=36,
             command=lambda: self._switch_tab("consolidate"),
         )
-        self._tab_consolidate_btn.pack(side="left")
+        self._tab_consolidate_btn.pack(side="left", pady=4)
 
-        # --- Tab content container ---
+        # --- Tab content area (uses grid to stack frames) ---
         self._tab_container = ctk.CTkFrame(self, fg_color=BG_MAIN)
         self._tab_container.pack(fill="both", expand=True, padx=0, pady=0)
+        self._tab_container.grid_rowconfigure(0, weight=1)
+        self._tab_container.grid_columnconfigure(0, weight=1)
 
         self._build_download_tab()
         self._build_consolidate_tab()
+
+        # Grid both frames in the same cell; raise the active one
+        self._dl_frame.grid(row=0, column=0, sticky="nsew", padx=16, pady=(0, 8))
+        self._cons_frame.grid(row=0, column=0, sticky="nsew", padx=16, pady=(0, 8))
 
         # Show download tab by default
         self._switch_tab("download")
@@ -464,21 +471,14 @@ class WebWorkApp(ctk.CTk):
 
         self._active_tab = tab
 
-        # Update tab button styles
         if tab == "download":
             self._tab_download_btn.configure(fg_color=TAB_ACTIVE_BG, text_color=TAB_ACTIVE_FG)
             self._tab_consolidate_btn.configure(fg_color=TAB_INACTIVE_BG, text_color=TAB_INACTIVE_FG)
-            self._cons_frame.pack_forget()
-            self._dl_frame.pack(
-                in_=self._tab_container, fill="both", expand=True, padx=16, pady=(0, 8)
-            )
+            self._dl_frame.tkraise()
         else:
             self._tab_consolidate_btn.configure(fg_color=TAB_ACTIVE_BG, text_color=TAB_ACTIVE_FG)
             self._tab_download_btn.configure(fg_color=TAB_INACTIVE_BG, text_color=TAB_INACTIVE_FG)
-            self._dl_frame.pack_forget()
-            self._cons_frame.pack(
-                in_=self._tab_container, fill="both", expand=True, padx=16, pady=(0, 8)
-            )
+            self._cons_frame.tkraise()
 
     # ------------------------------------------------------------------ #
     #  Download tab actions
