@@ -51,6 +51,14 @@ def _build_data_param(user_id: str, dt: date) -> str:
     return json.dumps(payload, separators=(",", ":"))
 
 
+def make_filename(colab_name: str, dt: date) -> str:
+    """Build the filename for a downloaded report.
+
+    Pattern: ``<collaborator name>_<YYYY-MM-DD>.xlsx``
+    """
+    return f"{colab_name}_{dt.strftime('%Y-%m-%d')}.xlsx"
+
+
 class DownloadResult:
     """Holds the results of a batch download run."""
 
@@ -62,6 +70,15 @@ class DownloadResult:
         self.auth_failed = False
 
 
+class ColabDownloadResult:
+    """Results for a single collaborator's download batch."""
+
+    def __init__(self, colab_name: str):
+        self.colab_name = colab_name
+        self.success_dates: list[date] = []
+        self.colab_folder: Path | None = None
+
+
 def run_downloads(
     token: str,
     colaboradores: list[dict],
@@ -69,6 +86,7 @@ def run_downloads(
     dest_folder: str,
     on_progress: Callable[[int, int, str], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    on_colab_complete: Callable[[ColabDownloadResult], None] | None = None,
 ) -> DownloadResult:
     """Execute the batch download process.
 
@@ -79,6 +97,9 @@ def run_downloads(
         dest_folder: Root destination folder.
         on_progress: Callback(current, total, status_message).
         should_cancel: Callback that returns True if the user wants to cancel.
+        on_colab_complete: Callback fired after all dates for one collaborator
+            have been processed. Receives a ColabDownloadResult with the list
+            of successfully downloaded dates and the collaborator folder path.
 
     Returns:
         DownloadResult with counts and error details.
@@ -91,18 +112,25 @@ def run_downloads(
         colab_folder = Path(dest_folder) / colab["nome"]
         colab_folder.mkdir(parents=True, exist_ok=True)
 
+        colab_result = ColabDownloadResult(colab["nome"])
+        colab_result.colab_folder = colab_folder
+
         for dt in dates:
             if should_cancel and should_cancel():
                 result.cancelled = True
+                # Still fire callback for partial results
+                if on_colab_complete and colab_result.success_dates:
+                    on_colab_complete(colab_result)
                 return result
 
             current += 1
-            filename = f"{dt.strftime('%Y-%m-%d')}.xlsx"
+            filename = make_filename(colab["nome"], dt)
             filepath = colab_folder / filename
 
             # Skip existing files
             if filepath.exists() and filepath.stat().st_size > 0:
                 result.skipped += 1
+                colab_result.success_dates.append(dt)
                 if on_progress:
                     on_progress(
                         current,
@@ -140,6 +168,8 @@ def run_downloads(
                             ),
                         }
                     )
+                    if on_colab_complete and colab_result.success_dates:
+                        on_colab_complete(colab_result)
                     return result
 
                 if resp.status_code != 200:
@@ -174,6 +204,7 @@ def run_downloads(
 
                 filepath.write_bytes(resp.content)
                 result.success += 1
+                colab_result.success_dates.append(dt)
 
             except requests.exceptions.Timeout:
                 result.errors.append(
@@ -193,6 +224,10 @@ def run_downloads(
                 )
 
             time.sleep(REQUEST_DELAY)
+
+        # Notify caller that this collaborator is done
+        if on_colab_complete:
+            on_colab_complete(colab_result)
 
     return result
 

@@ -8,6 +8,7 @@ from tkinter import filedialog
 
 import customtkinter as ctk
 
+from core.consolidator import consolidate_after_download, consolidate_files
 from core.date_utils import validate_dates
 from core.downloader import DownloadResult, run_downloads, save_error_log
 from core.token_parser import extract_token
@@ -25,6 +26,7 @@ from ui.styles import (
     BTN_HOVER,
     BTN_PRIMARY_BG,
     BTN_PRIMARY_FG,
+    BTN_REMOVE_BG,
     BTN_SECONDARY_BG,
     BTN_SECONDARY_FG,
     ERROR_COLOR,
@@ -36,6 +38,12 @@ from ui.styles import (
     NEUTRAL,
     PROGRESS_BG,
     PROGRESS_FG,
+    SUCCESS_COLOR,
+    TAB_ACTIVE_BG,
+    TAB_ACTIVE_FG,
+    TAB_HOVER_BG,
+    TAB_INACTIVE_BG,
+    TAB_INACTIVE_FG,
     WARNING_COLOR,
     WINDOW_HEIGHT,
     WINDOW_MIN_HEIGHT,
@@ -57,18 +65,70 @@ class WebWorkApp(ctk.CTk):
 
         self._cancel_flag = False
         self._downloading = False
+        self._active_tab = "download"
 
         self._build_ui()
+
+    # ------------------------------------------------------------------ #
+    #  UI construction
+    # ------------------------------------------------------------------ #
 
     def _build_ui(self):
         # Header
         header = HeaderFrame(self)
         header.pack(fill="x")
 
-        # Main scrollable area
-        self._main = ctk.CTkScrollableFrame(self, fg_color=BG_MAIN)
-        self._main.pack(fill="both", expand=True, padx=16, pady=(8, 8))
-        main = self._main
+        # --- Tab bar ---
+        self._tab_bar = ctk.CTkFrame(self, fg_color=BG_MAIN, corner_radius=0)
+        self._tab_bar.pack(fill="x", padx=16, pady=(8, 0))
+
+        self._tab_download_btn = ctk.CTkButton(
+            self._tab_bar,
+            text="Baixar Relatórios",
+            font=FONT_TITLE,
+            fg_color=TAB_ACTIVE_BG,
+            hover_color=TAB_HOVER_BG,
+            text_color=TAB_ACTIVE_FG,
+            corner_radius=6,
+            width=200,
+            height=36,
+            command=lambda: self._switch_tab("download"),
+        )
+        self._tab_download_btn.pack(side="left", padx=(0, 4))
+
+        self._tab_consolidate_btn = ctk.CTkButton(
+            self._tab_bar,
+            text="Consolidar Arquivos",
+            font=FONT_TITLE,
+            fg_color=TAB_INACTIVE_BG,
+            hover_color=TAB_HOVER_BG,
+            text_color=TAB_INACTIVE_FG,
+            corner_radius=6,
+            width=200,
+            height=36,
+            command=lambda: self._switch_tab("consolidate"),
+        )
+        self._tab_consolidate_btn.pack(side="left")
+
+        # --- Tab content container ---
+        self._tab_container = ctk.CTkFrame(self, fg_color=BG_MAIN)
+        self._tab_container.pack(fill="both", expand=True, padx=0, pady=0)
+
+        self._build_download_tab()
+        self._build_consolidate_tab()
+
+        # Show download tab by default
+        self._switch_tab("download")
+
+    # ------------------------------------------------------------------ #
+    #  Download tab (Alteração 1 + 2)
+    # ------------------------------------------------------------------ #
+
+    def _build_download_tab(self):
+        self._dl_frame = ctk.CTkScrollableFrame(
+            self._tab_container, fg_color=BG_MAIN
+        )
+        main = self._dl_frame
 
         # --- URL Section ---
         SectionLabel(main, text="URL da Requisição").pack(
@@ -283,6 +343,147 @@ class WebWorkApp(ctk.CTk):
         )
         self.error_textbox.pack(fill="x")
 
+    # ------------------------------------------------------------------ #
+    #  Consolidate tab (Alteração 3)
+    # ------------------------------------------------------------------ #
+
+    def _build_consolidate_tab(self):
+        self._cons_frame = ctk.CTkScrollableFrame(
+            self._tab_container, fg_color=BG_MAIN
+        )
+        main = self._cons_frame
+
+        SectionLabel(main, text="Selecionar Arquivos").pack(
+            anchor="w", pady=(8, 2)
+        )
+
+        btn_frame = ctk.CTkFrame(main, fg_color="transparent")
+        btn_frame.pack(fill="x", pady=(0, 4))
+
+        self._cons_select_btn = ctk.CTkButton(
+            btn_frame,
+            text="Selecionar arquivos",
+            font=FONT_BODY,
+            fg_color=BTN_SECONDARY_BG,
+            hover_color=BTN_HOVER,
+            text_color=BTN_SECONDARY_FG,
+            width=180,
+            command=self._cons_select_files,
+        )
+        self._cons_select_btn.pack(side="left")
+
+        # File list area
+        self._cons_files: list[Path] = []
+        self._cons_file_list_frame = ctk.CTkScrollableFrame(
+            main,
+            fg_color=INPUT_BG,
+            border_color=INPUT_BORDER,
+            border_width=1,
+            height=140,
+        )
+        self._cons_file_list_frame.pack(fill="x", pady=(0, 8))
+
+        self._cons_empty_label = ctk.CTkLabel(
+            self._cons_file_list_frame,
+            text="Nenhum arquivo selecionado.",
+            font=FONT_SMALL,
+            text_color=NEUTRAL,
+        )
+        self._cons_empty_label.pack(pady=8)
+
+        # Collaborator selection
+        SectionLabel(main, text="Colaborador").pack(anchor="w", pady=(4, 2))
+
+        colab_names = [c["nome"] for c in COLABORADORES]
+        self._cons_colab_var = ctk.StringVar(value="")
+        self._cons_colab_dropdown = ctk.CTkOptionMenu(
+            main,
+            values=colab_names,
+            variable=self._cons_colab_var,
+            font=FONT_BODY,
+            fg_color=INPUT_BG,
+            button_color=BTN_SECONDARY_BG,
+            button_hover_color=BTN_HOVER,
+            text_color=BLUE_PRIMARY,
+            dropdown_font=FONT_BODY,
+            dropdown_fg_color=INPUT_BG,
+            dropdown_text_color=BLUE_PRIMARY,
+            dropdown_hover_color=BTN_HOVER,
+            width=400,
+        )
+        self._cons_colab_dropdown.set("")
+        self._cons_colab_dropdown.pack(anchor="w", pady=(0, 8))
+
+        # Consolidate button
+        self._cons_action_btn = ctk.CTkButton(
+            main,
+            text="Consolidar",
+            font=FONT_TITLE,
+            fg_color=BTN_PRIMARY_BG,
+            hover_color=BTN_HOVER,
+            text_color=BTN_PRIMARY_FG,
+            width=160,
+            height=40,
+            command=self._cons_run,
+        )
+        self._cons_action_btn.pack(anchor="w", pady=(8, 4))
+
+        # Status / result
+        self._cons_status_label = ctk.CTkLabel(
+            main,
+            text="",
+            font=FONT_BODY,
+            text_color=BODY_TEXT_COLOR,
+            anchor="w",
+            wraplength=660,
+        )
+        self._cons_status_label.pack(fill="x", pady=(4, 2))
+
+        # "Abrir pasta" button for consolidation result
+        self._cons_open_folder_btn = ctk.CTkButton(
+            main,
+            text="Abrir pasta",
+            font=FONT_BODY,
+            fg_color=BTN_SECONDARY_BG,
+            hover_color=BTN_HOVER,
+            text_color=BTN_SECONDARY_FG,
+            width=130,
+            height=36,
+            command=self._cons_open_folder,
+        )
+        # Not packed yet
+        self._cons_result_path: Path | None = None
+
+    # ------------------------------------------------------------------ #
+    #  Tab switching
+    # ------------------------------------------------------------------ #
+
+    def _switch_tab(self, tab: str):
+        if self._downloading and tab != self._active_tab:
+            return  # don't switch tabs during download
+
+        self._active_tab = tab
+
+        # Update tab button styles
+        if tab == "download":
+            self._tab_download_btn.configure(fg_color=TAB_ACTIVE_BG, text_color=TAB_ACTIVE_FG)
+            self._tab_consolidate_btn.configure(fg_color=TAB_INACTIVE_BG, text_color=TAB_INACTIVE_FG)
+            self._cons_frame.pack_forget()
+            self._dl_frame.pack(
+                in_=self._tab_container, fill="both", expand=True, padx=16, pady=(0, 8)
+            )
+        else:
+            self._tab_consolidate_btn.configure(fg_color=TAB_ACTIVE_BG, text_color=TAB_ACTIVE_FG)
+            self._tab_download_btn.configure(fg_color=TAB_INACTIVE_BG, text_color=TAB_INACTIVE_FG)
+            self._dl_frame.pack_forget()
+            self._cons_frame.pack(
+                in_=self._tab_container, fill="both", expand=True, padx=16, pady=(0, 8)
+            )
+
+    # ------------------------------------------------------------------ #
+    #  Download tab actions
+    # ------------------------------------------------------------------ #
+
     def _select_all(self):
         self.colab_list.select_all()
 
@@ -299,12 +500,16 @@ class WebWorkApp(ctk.CTk):
         folder = self._dest_folder
         if not os.path.exists(folder):
             os.makedirs(folder, exist_ok=True)
+        self._open_path(folder)
+
+    @staticmethod
+    def _open_path(path: str):
         if sys.platform == "win32":
-            os.startfile(folder)
+            os.startfile(path)
         elif sys.platform == "darwin":
-            subprocess.Popen(["open", folder])
+            subprocess.Popen(["open", path])
         else:
-            subprocess.Popen(["xdg-open", folder])
+            subprocess.Popen(["xdg-open", path])
 
     def _set_message(self, text, color=ERROR_COLOR):
         self.message_label.configure(text=text, text_color=color)
@@ -338,6 +543,10 @@ class WebWorkApp(ctk.CTk):
         self._deselect_all_btn.configure(state=state)
         self._choose_folder_btn.configure(state=state)
         self.colab_list.set_enabled(not active)
+
+        # Disable tab switching during download
+        tab_state = "disabled" if active else "normal"
+        self._tab_consolidate_btn.configure(state=tab_state)
 
     def _on_main_button_click(self):
         if self._downloading:
@@ -403,6 +612,20 @@ class WebWorkApp(ctk.CTk):
         def should_cancel():
             return self._cancel_flag
 
+        def on_colab_complete(colab_result):
+            # Run consolidation for this collaborator
+            if colab_result.success_dates and colab_result.colab_folder:
+                self.after(
+                    0,
+                    self.status_label.configure,
+                    {"text": f"Consolidando relatórios de {colab_result.colab_name}..."},
+                )
+                consolidate_after_download(
+                    colab_name=colab_result.colab_name,
+                    colab_folder=colab_result.colab_folder,
+                    success_dates=colab_result.success_dates,
+                )
+
         def worker():
             result = run_downloads(
                 token=token,
@@ -411,6 +634,7 @@ class WebWorkApp(ctk.CTk):
                 dest_folder=dest,
                 on_progress=on_progress,
                 should_cancel=should_cancel,
+                on_colab_complete=on_colab_complete,
             )
             self.after(0, self._on_complete, result)
 
@@ -463,3 +687,147 @@ class WebWorkApp(ctk.CTk):
         # Show "Abrir pasta" button if at least 1 file was downloaded
         if result.success > 0:
             self.open_folder_btn.pack(anchor="w", pady=(4, 4))
+
+    # ------------------------------------------------------------------ #
+    #  Consolidate tab actions
+    # ------------------------------------------------------------------ #
+
+    def _cons_select_files(self):
+        filepaths = filedialog.askopenfilenames(
+            title="Selecionar arquivos Excel",
+            filetypes=[("Arquivos Excel", "*.xlsx")],
+        )
+        if not filepaths:
+            return
+
+        for fp_str in filepaths:
+            fp = Path(fp_str)
+            if fp not in self._cons_files and fp.suffix.lower() == ".xlsx":
+                self._cons_files.append(fp)
+
+        self._cons_refresh_file_list()
+
+    def _cons_refresh_file_list(self):
+        # Destroy all children
+        for widget in self._cons_file_list_frame.winfo_children():
+            widget.destroy()
+
+        if not self._cons_files:
+            self._cons_empty_label = ctk.CTkLabel(
+                self._cons_file_list_frame,
+                text="Nenhum arquivo selecionado.",
+                font=FONT_SMALL,
+                text_color=NEUTRAL,
+            )
+            self._cons_empty_label.pack(pady=8)
+            return
+
+        for i, fp in enumerate(self._cons_files):
+            row = ctk.CTkFrame(self._cons_file_list_frame, fg_color="transparent")
+            row.pack(fill="x", padx=4, pady=1)
+
+            ctk.CTkLabel(
+                row,
+                text=fp.name,
+                font=FONT_SMALL,
+                text_color=BLUE_PRIMARY,
+                anchor="w",
+            ).pack(side="left", fill="x", expand=True)
+
+            remove_btn = ctk.CTkButton(
+                row,
+                text="✕",
+                font=FONT_SMALL,
+                fg_color=BTN_REMOVE_BG,
+                hover_color=BTN_HOVER,
+                text_color="#ffffff",
+                width=28,
+                height=24,
+                command=lambda idx=i: self._cons_remove_file(idx),
+            )
+            remove_btn.pack(side="right", padx=(4, 0))
+
+    def _cons_remove_file(self, index: int):
+        if 0 <= index < len(self._cons_files):
+            self._cons_files.pop(index)
+            self._cons_refresh_file_list()
+
+    def _cons_run(self):
+        self._cons_status_label.configure(text="", text_color=BODY_TEXT_COLOR)
+        self._cons_open_folder_btn.pack_forget()
+
+        # Validate: need at least 2 files
+        if len(self._cons_files) < 2:
+            self._cons_status_label.configure(
+                text="Selecione pelo menos 2 arquivos para consolidar.",
+                text_color=WARNING_COLOR,
+            )
+            return
+
+        # Validate: collaborator selected
+        colab_name = self._cons_colab_var.get().strip()
+        if not colab_name:
+            self._cons_status_label.configure(
+                text="Selecione um colaborador.",
+                text_color=WARNING_COLOR,
+            )
+            return
+
+        # Validate files exist and are valid xlsx
+        valid_files: list[Path] = []
+        for fp in self._cons_files:
+            if fp.exists() and fp.suffix.lower() == ".xlsx":
+                valid_files.append(fp)
+
+        if len(valid_files) < 2:
+            self._cons_status_label.configure(
+                text="Menos de 2 arquivos válidos encontrados. Verifique os arquivos selecionados.",
+                text_color=ERROR_COLOR,
+            )
+            return
+
+        self._cons_status_label.configure(
+            text="Consolidando...", text_color=BODY_TEXT_COLOR
+        )
+        self._cons_action_btn.configure(state="disabled")
+        self._tab_download_btn.configure(state="disabled")
+
+        def worker():
+            try:
+                result_path = consolidate_files(
+                    files=valid_files,
+                    colab_name=colab_name,
+                )
+                self.after(0, self._cons_on_complete, result_path, None)
+            except Exception as e:
+                self.after(0, self._cons_on_complete, None, str(e))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _cons_on_complete(self, result_path: Path | None, error: str | None):
+        self._cons_action_btn.configure(state="normal")
+        self._tab_download_btn.configure(state="normal")
+
+        if error:
+            self._cons_status_label.configure(
+                text=f"Erro na consolidação: {error}",
+                text_color=ERROR_COLOR,
+            )
+            return
+
+        if result_path and result_path.exists():
+            self._cons_result_path = result_path
+            self._cons_status_label.configure(
+                text=f"Consolidado gerado: {result_path.name}",
+                text_color=SUCCESS_COLOR,
+            )
+            self._cons_open_folder_btn.pack(anchor="w", pady=(4, 4))
+        else:
+            self._cons_status_label.configure(
+                text="Nenhum arquivo consolidado foi gerado.",
+                text_color=WARNING_COLOR,
+            )
+
+    def _cons_open_folder(self):
+        if self._cons_result_path and self._cons_result_path.parent.exists():
+            self._open_path(str(self._cons_result_path.parent))

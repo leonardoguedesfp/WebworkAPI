@@ -8,8 +8,10 @@ import requests
 
 from core.downloader import (
     XLSX_CONTENT_TYPE,
+    ColabDownloadResult,
     DownloadResult,
     _build_data_param,
+    make_filename,
     run_downloads,
     save_error_log,
 )
@@ -29,6 +31,14 @@ def _make_response(status=200, content=FAKE_XLSX, content_type=XLSX_CONTENT_TYPE
     resp.content = content
     resp.headers = {"Content-Type": content_type}
     return resp
+
+
+class TestMakeFilename:
+    def test_standard(self):
+        assert make_filename("Maria Isabel", date(2026, 3, 1)) == "Maria Isabel_2026-03-01.xlsx"
+
+    def test_with_special_chars(self):
+        assert make_filename("CíntiaOliveiraPessôa", date(2026, 12, 25)) == "CíntiaOliveiraPessôa_2026-12-25.xlsx"
 
 
 class TestBuildDataParam:
@@ -59,7 +69,7 @@ class TestRunDownloads:
         assert result.success == 1
         assert result.skipped == 0
         assert len(result.errors) == 0
-        expected_file = tmp_path / "Test User" / "2026-03-01.xlsx"
+        expected_file = tmp_path / "Test User" / "Test User_2026-03-01.xlsx"
         assert expected_file.exists()
         assert expected_file.read_bytes() == FAKE_XLSX
 
@@ -69,7 +79,7 @@ class TestRunDownloads:
         colab = _make_colab()
         colab_dir = tmp_path / colab["nome"]
         colab_dir.mkdir()
-        (colab_dir / "2026-03-01.xlsx").write_bytes(b"existing data")
+        (colab_dir / "Test User_2026-03-01.xlsx").write_bytes(b"existing data")
 
         result = run_downloads(FAKE_TOKEN, [colab], [date(2026, 3, 1)], str(tmp_path))
 
@@ -225,8 +235,52 @@ class TestRunDownloads:
 
         run_downloads(FAKE_TOKEN, colabs, dates, str(tmp_path))
 
-        assert (tmp_path / "Maria Isabel" / "2026-03-01.xlsx").exists()
-        assert (tmp_path / "João Silva" / "2026-03-01.xlsx").exists()
+        assert (tmp_path / "Maria Isabel" / "Maria Isabel_2026-03-01.xlsx").exists()
+        assert (tmp_path / "João Silva" / "João Silva_2026-03-01.xlsx").exists()
+
+    @patch("core.downloader.time.sleep")
+    @patch("core.downloader.requests.get")
+    def test_on_colab_complete_callback(self, mock_get, mock_sleep, tmp_path):
+        mock_get.return_value = _make_response()
+        colab_results = []
+
+        def on_colab_complete(cr):
+            colab_results.append(cr)
+
+        colabs = [_make_colab("Alice", "1"), _make_colab("Bob", "2")]
+        dates = [date(2026, 3, 1), date(2026, 3, 2)]
+
+        run_downloads(
+            FAKE_TOKEN, colabs, dates, str(tmp_path),
+            on_colab_complete=on_colab_complete,
+        )
+
+        assert len(colab_results) == 2
+        assert colab_results[0].colab_name == "Alice"
+        assert len(colab_results[0].success_dates) == 2
+        assert colab_results[1].colab_name == "Bob"
+
+    @patch("core.downloader.time.sleep")
+    @patch("core.downloader.requests.get")
+    def test_skipped_files_included_in_colab_success_dates(self, mock_get, mock_sleep, tmp_path):
+        """Skipped (already existing) files should be in success_dates for consolidation."""
+        colab = _make_colab()
+        colab_dir = tmp_path / colab["nome"]
+        colab_dir.mkdir()
+        (colab_dir / "Test User_2026-03-01.xlsx").write_bytes(b"existing data")
+        mock_get.return_value = _make_response()
+
+        colab_results = []
+        dates = [date(2026, 3, 1), date(2026, 3, 2)]
+
+        run_downloads(
+            FAKE_TOKEN, [colab], dates, str(tmp_path),
+            on_colab_complete=lambda cr: colab_results.append(cr),
+        )
+
+        assert len(colab_results) == 1
+        assert date(2026, 3, 1) in colab_results[0].success_dates
+        assert date(2026, 3, 2) in colab_results[0].success_dates
 
 
 class TestSaveErrorLog:

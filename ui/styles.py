@@ -33,6 +33,17 @@ PROGRESS_BG = NEUTRAL
 
 ERROR_COLOR = "#cc0000"
 WARNING_COLOR = "#b87c00"
+SUCCESS_COLOR = TEAL_DARK  # #1c5a59
+
+# Tab bar colors
+TAB_ACTIVE_BG = BLUE_PRIMARY  # #003e63
+TAB_ACTIVE_FG = "#ffffff"
+TAB_INACTIVE_BG = NEUTRAL  # #8e8985
+TAB_INACTIVE_FG = "#ffffff"
+TAB_HOVER_BG = TEAL_DARK  # #1c5a59
+
+# Consolidation tab specific
+BTN_REMOVE_BG = NEUTRAL  # #8e8985
 
 # Font families (with fallback)
 FONT_FAMILY = "Segoe UI"
