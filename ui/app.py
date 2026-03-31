@@ -11,6 +11,7 @@ import customtkinter as ctk
 from core.consolidator import (
     consolidate_after_download,
     consolidate_files,
+    consolidate_general,
     detect_collaborator,
 )
 from core.date_utils import validate_dates
@@ -630,6 +631,10 @@ class WebWorkApp(ctk.CTk):
         def should_cancel():
             return self._cancel_flag
 
+        # Track per-collaborator consolidation results for general consolidation
+        colab_consolidated: list[tuple[str, Path]] = []
+        individual_count = [0]
+
         def on_colab_complete(colab_result):
             # Run consolidation for this collaborator
             if colab_result.success_dates and colab_result.colab_folder:
@@ -638,11 +643,16 @@ class WebWorkApp(ctk.CTk):
                     self.status_label.configure,
                     {"text": f"Consolidando relatórios de {colab_result.colab_name}..."},
                 )
-                consolidate_after_download(
+                consolidated = consolidate_after_download(
                     colab_name=colab_result.colab_name,
                     colab_folder=colab_result.colab_folder,
                     success_dates=colab_result.success_dates,
                 )
+                if consolidated:
+                    individual_count[0] += 1
+                    colab_consolidated.append(
+                        (colab_result.colab_name, colab_result.colab_folder)
+                    )
 
         def worker():
             result = run_downloads(
@@ -654,7 +664,24 @@ class WebWorkApp(ctk.CTk):
                 should_cancel=should_cancel,
                 on_colab_complete=on_colab_complete,
             )
-            self.after(0, self._on_complete, result)
+
+            # Generate general consolidation if 2+ collaborators have data
+            general_generated = False
+            if len(colab_consolidated) >= 2:
+                self.after(
+                    0,
+                    self.status_label.configure,
+                    {"text": "Gerando consolidado geral..."},
+                )
+                general_path = consolidate_general(
+                    colab_consolidated, Path(dest)
+                )
+                general_generated = general_path is not None
+
+            self.after(
+                0, self._on_complete, result,
+                individual_count[0], general_generated,
+            )
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -668,7 +695,12 @@ class WebWorkApp(ctk.CTk):
         self.progress_label.configure(text=f"{current} de {total} arquivos")
         self.status_label.configure(text=msg)
 
-    def _on_complete(self, result: DownloadResult):
+    def _on_complete(
+        self,
+        result: DownloadResult,
+        individual_consolidated: int = 0,
+        general_consolidated: bool = False,
+    ):
         self._set_downloading(False)
         self.progress_bar.set(1.0)
 
@@ -677,6 +709,11 @@ class WebWorkApp(ctk.CTk):
             f"Pulados: {result.skipped}",
             f"Erros: {len(result.errors)}",
         ]
+        if individual_consolidated > 0:
+            cons_parts = f"{individual_consolidated} individuais"
+            if general_consolidated:
+                cons_parts += " + 1 geral"
+            parts.append(f"Consolidados: {cons_parts}")
         if result.cancelled:
             parts.append("(Cancelado pelo usuário)")
         summary = " | ".join(parts)
