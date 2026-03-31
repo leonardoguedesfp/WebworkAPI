@@ -10,6 +10,8 @@ from core.consolidator import (
     _sheet_name_for_date,
     consolidate_after_download,
     consolidate_files,
+    detect_collaborator,
+    extract_collaborator_from_filename,
 )
 
 
@@ -203,3 +205,72 @@ class TestConsolidateAfterDownload:
         wb = load_workbook(result)
         assert len(wb.sheetnames) == 1
         wb.close()
+
+
+class TestExtractCollaboratorFromFilename:
+    def test_standard_pattern(self):
+        assert extract_collaborator_from_filename("Ana Maria Areia Alves_2026-03-01.xlsx") == "Ana Maria Areia Alves"
+
+    def test_underscores_in_name(self):
+        assert extract_collaborator_from_filename("Ana_Maria_Areia_Alves_2026-03-01.xlsx") == "Ana Maria Areia Alves"
+
+    def test_no_date_pattern(self):
+        assert extract_collaborator_from_filename("relatorio_março.xlsx") is None
+
+    def test_duplicated_name_pattern(self):
+        # Old buggy pattern: Name_YYYY-MM-DD_Name.xlsx
+        assert extract_collaborator_from_filename("Ana Maria Areia Alves_2026-03-01_Ana Maria Areia Alves.xlsx") == "Ana Maria Areia Alves"
+
+    def test_single_word_name(self):
+        assert extract_collaborator_from_filename("Ricardo_2026-03-01.xlsx") == "Ricardo"
+
+
+class TestDetectCollaborator:
+    KNOWN = [
+        "Ana Maria Areia Alves",
+        "Maria Isabel Carvalho",
+        "Ricardo Passos Advocacia",
+    ]
+
+    def test_all_same_collaborator(self):
+        files = [
+            "Ana Maria Areia Alves_2026-03-01.xlsx",
+            "Ana Maria Areia Alves_2026-03-02.xlsx",
+            "Ana Maria Areia Alves_2026-03-03.xlsx",
+        ]
+        matched, warning = detect_collaborator(files, self.KNOWN)
+        assert matched == "Ana Maria Areia Alves"
+        assert warning is None
+
+    def test_different_collaborators(self):
+        files = [
+            "Ana Maria Areia Alves_2026-03-01.xlsx",
+            "Maria Isabel Carvalho_2026-03-02.xlsx",
+        ]
+        matched, warning = detect_collaborator(files, self.KNOWN)
+        assert matched is None
+        assert warning is not None
+        assert "diferentes" in warning
+
+    def test_no_pattern_match(self):
+        files = ["relatorio_março.xlsx", "dados.xlsx"]
+        matched, warning = detect_collaborator(files, self.KNOWN)
+        assert matched is None
+        assert warning is None
+
+    def test_unknown_collaborator_fallback(self):
+        files = ["Unknown Person_2026-03-01.xlsx"]
+        matched, warning = detect_collaborator(files, self.KNOWN)
+        assert matched is None
+        assert warning is None
+
+    def test_underscore_name_matches(self):
+        files = ["Ana_Maria_Areia_Alves_2026-03-01.xlsx"]
+        matched, warning = detect_collaborator(files, self.KNOWN)
+        assert matched == "Ana Maria Areia Alves"
+        assert warning is None
+
+    def test_empty_list(self):
+        matched, warning = detect_collaborator([], self.KNOWN)
+        assert matched is None
+        assert warning is None

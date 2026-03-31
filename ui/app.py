@@ -8,7 +8,11 @@ from tkinter import filedialog
 
 import customtkinter as ctk
 
-from core.consolidator import consolidate_after_download, consolidate_files
+from core.consolidator import (
+    consolidate_after_download,
+    consolidate_files,
+    detect_collaborator,
+)
 from core.date_utils import validate_dates
 from core.downloader import DownloadResult, run_downloads, save_error_log
 from core.token_parser import extract_token
@@ -421,6 +425,17 @@ class WebWorkApp(ctk.CTk):
         self._cons_colab_dropdown.set("")
         self._cons_colab_dropdown.pack(anchor="w", pady=(0, 8))
 
+        # Warning label for mixed collaborators
+        self._cons_warning_label = ctk.CTkLabel(
+            main,
+            text="",
+            font=FONT_BODY,
+            text_color=WARNING_COLOR,
+            anchor="w",
+            wraplength=660,
+        )
+        self._cons_warning_label.pack(fill="x", pady=(0, 4))
+
         # Consolidate button
         self._cons_action_btn = ctk.CTkButton(
             main,
@@ -460,6 +475,7 @@ class WebWorkApp(ctk.CTk):
         )
         # Not packed yet
         self._cons_result_path: Path | None = None
+        self._cons_mixed_colabs = False
 
     # ------------------------------------------------------------------ #
     #  Tab switching
@@ -474,11 +490,13 @@ class WebWorkApp(ctk.CTk):
         if tab == "download":
             self._tab_download_btn.configure(fg_color=TAB_ACTIVE_BG, text_color=TAB_ACTIVE_FG)
             self._tab_consolidate_btn.configure(fg_color=TAB_INACTIVE_BG, text_color=TAB_INACTIVE_FG)
-            self._dl_frame.tkraise()
+            self._cons_frame.grid_remove()
+            self._dl_frame.grid(row=0, column=0, sticky="nsew", padx=16, pady=(0, 8))
         else:
             self._tab_consolidate_btn.configure(fg_color=TAB_ACTIVE_BG, text_color=TAB_ACTIVE_FG)
             self._tab_download_btn.configure(fg_color=TAB_INACTIVE_BG, text_color=TAB_INACTIVE_FG)
-            self._cons_frame.tkraise()
+            self._dl_frame.grid_remove()
+            self._cons_frame.grid(row=0, column=0, sticky="nsew", padx=16, pady=(0, 8))
 
     # ------------------------------------------------------------------ #
     #  Download tab actions
@@ -706,6 +724,7 @@ class WebWorkApp(ctk.CTk):
                 self._cons_files.append(fp)
 
         self._cons_refresh_file_list()
+        self._cons_detect_collaborator()
 
     def _cons_refresh_file_list(self):
         # Destroy all children
@@ -751,10 +770,39 @@ class WebWorkApp(ctk.CTk):
         if 0 <= index < len(self._cons_files):
             self._cons_files.pop(index)
             self._cons_refresh_file_list()
+            self._cons_detect_collaborator()
+
+    def _cons_detect_collaborator(self):
+        """Auto-detect collaborator from selected filenames."""
+        self._cons_warning_label.configure(text="")
+        self._cons_mixed_colabs = False
+
+        if not self._cons_files:
+            return
+
+        known_names = [c["nome"] for c in COLABORADORES]
+        filenames = [fp.name for fp in self._cons_files]
+        matched, warning = detect_collaborator(filenames, known_names)
+
+        if warning:
+            self._cons_warning_label.configure(text=warning)
+            self._cons_mixed_colabs = True
+            self._cons_colab_dropdown.set("")
+        elif matched:
+            self._cons_colab_dropdown.set(matched)
+        # else: no match — leave dropdown as-is for manual selection
 
     def _cons_run(self):
         self._cons_status_label.configure(text="", text_color=BODY_TEXT_COLOR)
         self._cons_open_folder_btn.pack_forget()
+
+        # Block if files are from different collaborators
+        if self._cons_mixed_colabs:
+            self._cons_status_label.configure(
+                text="Não é possível consolidar arquivos de colaboradores diferentes.",
+                text_color=WARNING_COLOR,
+            )
+            return
 
         # Validate: need at least 2 files
         if len(self._cons_files) < 2:

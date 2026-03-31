@@ -40,6 +40,72 @@ def _safe_sheet_name(name: str) -> str:
     return name[:31]
 
 
+def extract_collaborator_from_filename(filename: str) -> str | None:
+    """Extract the collaborator name from a filename.
+
+    Expects pattern: ``<name>_<YYYY-MM-DD>...``
+    Returns the name with underscores replaced by spaces, or ``None``.
+    """
+    stem = Path(filename).stem if "." in filename else filename
+    m = re.match(r"^(.+?)_(\d{4}-\d{2}-\d{2})", stem)
+    if m:
+        return m.group(1).replace("_", " ")
+    return None
+
+
+def detect_collaborator(
+    filenames: list[str],
+    known_names: list[str],
+) -> tuple[str | None, str | None]:
+    """Detect collaborator from a list of filenames.
+
+    Compares extracted names against *known_names* (case-insensitive,
+    ignoring underscores vs spaces).
+
+    Returns:
+        (matched_name, warning) — *matched_name* is the canonical name from
+        *known_names* if all files match the same collaborator, else ``None``.
+        *warning* is set when files belong to different collaborators.
+    """
+    if not filenames:
+        return None, None
+
+    # Build lookup: normalised -> canonical
+    lookup: dict[str, str] = {}
+    for name in known_names:
+        key = name.replace("_", " ").strip().lower()
+        lookup[key] = name
+
+    detected: set[str] = set()
+    any_extracted = False
+
+    for fn in filenames:
+        extracted = extract_collaborator_from_filename(fn)
+        if extracted is None:
+            continue
+        any_extracted = True
+        key = extracted.strip().lower()
+        canonical = lookup.get(key)
+        if canonical:
+            detected.add(canonical)
+
+    if not any_extracted:
+        # No filenames matched the pattern — fallback
+        return None, None
+
+    if len(detected) == 1:
+        return detected.pop(), None
+
+    if len(detected) > 1:
+        return None, (
+            "Os arquivos selecionados são de colaboradores diferentes. "
+            "Selecione arquivos de um único colaborador."
+        )
+
+    # Extracted names didn't match any known collaborator — fallback
+    return None, None
+
+
 def consolidate_files(
     files: list[Path],
     colab_name: str,
